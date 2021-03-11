@@ -40,17 +40,6 @@
 
 using namespace std::placeholders;
 
-#if __clang__ && defined(__APPLE__)
-namespace {
-template <typename To, typename From>
-inline std::shared_ptr<To> reinterpret_pointer_cast(std::shared_ptr<From> const &ptr) noexcept {
-	return std::shared_ptr<To>(ptr, reinterpret_cast<To *>(ptr.get()));
-}
-} // namespace
-#else
-using std::reinterpret_pointer_cast;
-#endif
-
 namespace rtc::impl {
 
 static LogCounter COUNTER_MEDIA_TRUNCATED(plog::warning,
@@ -99,12 +88,12 @@ void PeerConnection::close() {
 	closeTransports();
 }
 
-std::optional<Description> PeerConnection::localDescription() const {
+optional<Description> PeerConnection::localDescription() const {
 	std::lock_guard lock(mLocalDescriptionMutex);
 	return mLocalDescription;
 }
 
-std::optional<Description> PeerConnection::remoteDescription() const {
+optional<Description> PeerConnection::remoteDescription() const {
 	std::lock_guard lock(mRemoteDescriptionMutex);
 	return mRemoteDescription;
 }
@@ -300,15 +289,15 @@ shared_ptr<SctpTransport> PeerConnection::initSctpTransport() {
 	}
 }
 
-std::shared_ptr<IceTransport> PeerConnection::getIceTransport() const {
+shared_ptr<IceTransport> PeerConnection::getIceTransport() const {
 	return std::atomic_load(&mIceTransport);
 }
 
-std::shared_ptr<DtlsTransport> PeerConnection::getDtlsTransport() const {
+shared_ptr<DtlsTransport> PeerConnection::getDtlsTransport() const {
 	return std::atomic_load(&mDtlsTransport);
 }
 
-std::shared_ptr<SctpTransport> PeerConnection::getSctpTransport() const {
+shared_ptr<SctpTransport> PeerConnection::getSctpTransport() const {
 	return std::atomic_load(&mSctpTransport);
 }
 
@@ -484,7 +473,7 @@ void PeerConnection::forwardMedia(message_ptr message) {
 	}
 }
 
-std::optional<std::string> PeerConnection::getMidFromSsrc(uint32_t ssrc) {
+optional<std::string> PeerConnection::getMidFromSsrc(uint32_t ssrc) {
 	if (auto it = mMidFromSsrc.find(ssrc); it != mMidFromSsrc.end())
 		return it->second;
 
@@ -494,10 +483,10 @@ std::optional<std::string> PeerConnection::getMidFromSsrc(uint32_t ssrc) {
 			return nullopt;
 		for (unsigned int i = 0; i < mRemoteDescription->mediaCount(); ++i) {
 			if (auto found = std::visit(
-			        rtc::overloaded{[&](Description::Application *) -> std::optional<string> {
+			        rtc::overloaded{[&](Description::Application *) -> optional<string> {
 				                        return std::nullopt;
 			                        },
-			                        [&](Description::Media *media) -> std::optional<string> {
+			                        [&](Description::Media *media) -> optional<string> {
 				                        return media->hasSSRC(ssrc)
 				                                   ? std::make_optional(media->mid())
 				                                   : nullopt;
@@ -515,10 +504,10 @@ std::optional<std::string> PeerConnection::getMidFromSsrc(uint32_t ssrc) {
 			return nullopt;
 		for (unsigned int i = 0; i < mLocalDescription->mediaCount(); ++i) {
 			if (auto found = std::visit(
-			        rtc::overloaded{[&](Description::Application *) -> std::optional<string> {
+			        rtc::overloaded{[&](Description::Application *) -> optional<string> {
 				                        return std::nullopt;
 			                        },
-			                        [&](Description::Media *media) -> std::optional<string> {
+			                        [&](Description::Media *media) -> optional<string> {
 				                        return media->hasSSRC(ssrc)
 				                                   ? std::make_optional(media->mid())
 				                                   : nullopt;
@@ -641,7 +630,7 @@ void PeerConnection::remoteCloseDataChannels() {
 }
 
 shared_ptr<Track> PeerConnection::emplaceTrack(Description::Media description) {
-	std::shared_ptr<Track> track;
+	shared_ptr<Track> track;
 	if (auto it = mTracks.find(description.mid()); it != mTracks.end())
 		if (track = it->second.lock(); track)
 			track->setDescription(std::move(description));
@@ -673,7 +662,7 @@ void PeerConnection::incomingTrack(Description::Media description) {
 void PeerConnection::openTracks() {
 #if RTC_ENABLE_MEDIA
 	if (auto transport = std::atomic_load(&mDtlsTransport)) {
-		auto srtpTransport = reinterpret_pointer_cast<DtlsSrtpTransport>(transport);
+		auto srtpTransport = std::dynamic_pointer_cast<DtlsSrtpTransport>(transport);
 		std::shared_lock lock(mTracksMutex); // read-only
 		for (auto it = mTracks.begin(); it != mTracks.end(); ++it)
 			if (auto track = it->second.lock())
@@ -949,7 +938,7 @@ void PeerConnection::triggerDataChannel(weak_ptr<DataChannel> weakDataChannel) {
 	                    std::make_shared<rtc::DataChannel>(std::move(dataChannel)));
 }
 
-void PeerConnection::triggerTrack(std::shared_ptr<Track> track) {
+void PeerConnection::triggerTrack(shared_ptr<Track> track) {
 	mProcessor->enqueue(trackCallback.wrap(), std::make_shared<rtc::Track>(std::move(track)));
 }
 

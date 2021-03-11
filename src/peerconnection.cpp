@@ -40,17 +40,6 @@
 
 using namespace std::placeholders;
 
-#if __clang__ && defined(__APPLE__)
-namespace {
-template <typename To, typename From>
-inline std::shared_ptr<To> reinterpret_pointer_cast(std::shared_ptr<From> const &ptr) noexcept {
-	return std::shared_ptr<To>(ptr, reinterpret_cast<To *>(ptr.get()));
-}
-} // namespace
-#else
-using std::reinterpret_pointer_cast;
-#endif
-
 namespace rtc {
 
 PeerConnection::PeerConnection() : PeerConnection(Configuration()) {}
@@ -74,11 +63,11 @@ PeerConnection::SignalingState PeerConnection::signalingState() const {
 	return impl()->signalingState;
 }
 
-std::optional<Description> PeerConnection::localDescription() const {
+optional<Description> PeerConnection::localDescription() const {
 	return impl()->localDescription();
 }
 
-std::optional<Description> PeerConnection::remoteDescription() const {
+optional<Description> PeerConnection::remoteDescription() const {
 	return impl()->remoteDescription();
 }
 
@@ -232,7 +221,8 @@ void PeerConnection::setRemoteDescription(Description description) {
 
 	if (type == Description::Type::Offer) {
 		// This is an offer, we need to answer
-		setLocalDescription(Description::Type::Answer);
+		if (!impl()->config.disableAutoNegotiation)
+			setLocalDescription(Description::Type::Answer);
 	} else {
 		// This is an answer
 		// Since we assumed passive role during DataChannel creation, we need to shift the
@@ -249,17 +239,17 @@ void PeerConnection::addRemoteCandidate(Candidate candidate) {
 	impl()->processRemoteCandidate(std::move(candidate));
 }
 
-std::optional<string> PeerConnection::localAddress() const {
+optional<string> PeerConnection::localAddress() const {
 	auto iceTransport = impl()->getIceTransport();
 	return iceTransport ? iceTransport->getLocalAddress() : nullopt;
 }
 
-std::optional<string> PeerConnection::remoteAddress() const {
+optional<string> PeerConnection::remoteAddress() const {
 	auto iceTransport = impl()->getIceTransport();
 	return iceTransport ? iceTransport->getRemoteAddress() : nullopt;
 }
 
-shared_ptr<DataChannel> PeerConnection::addDataChannel(string label, DataChannelInit init) {
+shared_ptr<DataChannel> PeerConnection::createDataChannel(string label, DataChannelInit init) {
 	// RFC 5763: The answerer MUST use either a setup attribute value of setup:active or
 	// setup:passive. [...] Thus, setup:active is RECOMMENDED.
 	// See https://tools.ietf.org/html/rfc5763#section-5
@@ -268,6 +258,7 @@ shared_ptr<DataChannel> PeerConnection::addDataChannel(string label, DataChannel
 	auto role = iceTransport ? iceTransport->role() : Description::Role::Passive;
 
 	auto channelImpl = impl()->emplaceDataChannel(role, std::move(label), std::move(init));
+	auto channel = std::make_shared<DataChannel>(channelImpl);
 
 	if (auto transport = impl()->getSctpTransport())
 		if (transport->state() == impl::SctpTransport::State::Connected)
@@ -278,18 +269,29 @@ shared_ptr<DataChannel> PeerConnection::addDataChannel(string label, DataChannel
 	if (!local || !local->hasApplication())
 		impl()->negotiationNeeded = true;
 
-	return std::make_shared<DataChannel>(channelImpl);
-}
+	if (!impl()->config.disableAutoNegotiation)
+		setLocalDescription();
 
-shared_ptr<DataChannel> PeerConnection::createDataChannel(string label, DataChannelInit init) {
-	auto channel = addDataChannel(std::move(label), std::move(init));
-	setLocalDescription();
 	return channel;
 }
 
 void PeerConnection::onDataChannel(
     std::function<void(shared_ptr<DataChannel> dataChannel)> callback) {
 	impl()->dataChannelCallback = callback;
+}
+
+std::shared_ptr<Track> PeerConnection::addTrack(Description::Media description) {
+	auto trackImpl = impl()->emplaceTrack(std::move(description));
+	auto track = std::make_shared<Track>(trackImpl);
+
+	// Renegotiation is needed for the new or updated track
+	impl()->negotiationNeeded = true;
+
+	return track;
+}
+
+void PeerConnection::onTrack(std::function<void(std::shared_ptr<Track>)> callback) {
+	impl()->trackCallback = callback;
 }
 
 void PeerConnection::onLocalDescription(std::function<void(Description description)> callback) {
@@ -312,19 +314,6 @@ void PeerConnection::onSignalingStateChange(std::function<void(SignalingState st
 	impl()->signalingStateChangeCallback = callback;
 }
 
-std::shared_ptr<Track> PeerConnection::addTrack(Description::Media description) {
-	auto trackImpl = impl()->emplaceTrack(std::move(description));
-
-	// Renegotiation is needed for the new or updated track
-	impl()->negotiationNeeded = true;
-
-	return std::make_shared<Track>(trackImpl);
-}
-
-void PeerConnection::onTrack(std::function<void(std::shared_ptr<Track>)> callback) {
-	impl()->trackCallback = callback;
-}
-
 bool PeerConnection::getSelectedCandidatePair(Candidate *local, Candidate *remote) {
 	auto iceTransport = impl()->getIceTransport();
 	return iceTransport ? iceTransport->getSelectedCandidatePair(local, remote) : false;
@@ -345,7 +334,7 @@ size_t PeerConnection::bytesReceived() {
 	return sctpTransport ? sctpTransport->bytesReceived() : 0;
 }
 
-std::optional<std::chrono::milliseconds> PeerConnection::rtt() {
+optional<std::chrono::milliseconds> PeerConnection::rtt() {
 	auto sctpTransport = impl()->getSctpTransport();
 	return sctpTransport ? sctpTransport->rtt() : nullopt;
 }

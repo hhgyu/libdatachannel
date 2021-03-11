@@ -35,7 +35,6 @@
 #endif
 
 using namespace rtc;
-using std::optional;
 using std::chrono::milliseconds;
 
 namespace {
@@ -55,7 +54,7 @@ std::unordered_map<int, void *> userPointerMap;
 std::mutex mutex;
 int lastId = 0;
 
-std::optional<void *> getUserPointer(int id) {
+optional<void *> getUserPointer(int id) {
 	std::lock_guard lock(mutex);
 	auto it = userPointerMap.find(id);
 	return it != userPointerMap.end() ? std::make_optional(it->second) : nullopt;
@@ -328,7 +327,7 @@ private:
 } // namespace
 
 void rtcInitLogger(rtcLogLevel level, rtcLogCallbackFunc cb) {
-	static std::optional<plogAppender> appender;
+	static optional<plogAppender> appender;
 	const auto severity = static_cast<plog::Severity>(level);
 	std::lock_guard lock(mutex);
 	if (appender) {
@@ -353,6 +352,7 @@ int rtcCreatePeerConnection(const rtcConfiguration *config) {
 			c.iceServers.emplace_back(string(config->iceServers[i]));
 
 		c.enableIceTcp = config->enableIceTcp;
+		c.disableAutoNegotiation = config->disableAutoNegotiation;
 
 		if (config->portRangeBegin > 0 || config->portRangeEnd > 0) {
 			c.portRangeBegin = config->portRangeBegin;
@@ -381,9 +381,11 @@ int rtcDeletePeerConnection(int pc) {
 	});
 }
 
-int rtcAddDataChannel(int pc, const char *label) { return rtcAddDataChannelEx(pc, label, nullptr); }
+int rtcCreateDataChannel(int pc, const char *label) {
+	return rtcCreateDataChannelEx(pc, label, nullptr);
+}
 
-int rtcAddDataChannelEx(int pc, const char *label, const rtcDataChannelInit *init) {
+int rtcCreateDataChannelEx(int pc, const char *label, const rtcDataChannelInit *init) {
 	return wrap([&] {
 		DataChannelInit dci = {};
 		if (init) {
@@ -408,23 +410,13 @@ int rtcAddDataChannelEx(int pc, const char *label, const rtcDataChannelInit *ini
 
 		auto peerConnection = getPeerConnection(pc);
 		int dc = emplaceDataChannel(
-		    peerConnection->addDataChannel(string(label ? label : ""), std::move(dci)));
+		    peerConnection->createDataChannel(string(label ? label : ""), std::move(dci)));
 
 		if (auto ptr = getUserPointer(pc))
 			rtcSetUserPointer(dc, *ptr);
 
 		return dc;
 	});
-}
-
-int rtcCreateDataChannel(int pc, const char *label) {
-	return rtcCreateDataChannelEx(pc, label, nullptr);
-}
-
-int rtcCreateDataChannelEx(int pc, const char *label, const rtcDataChannelInit *init) {
-	int dc = rtcAddDataChannelEx(pc, label, init);
-	rtcSetLocalDescription(pc, NULL);
-	return dc;
 }
 
 int rtcDeleteDataChannel(int dc) {
@@ -558,7 +550,7 @@ int rtcSetH264PacketizationHandler(int tr, uint32_t ssrc, const char *cname, uin
 		emplaceMediaChainableHandler(h264Handler, tr);
 		emplaceRTPConfig(rtpConfig, tr);
 		// set handler
-		track->setRtcpHandler(h264Handler);
+		track->setMediaHandler(h264Handler);
 		return RTC_ERR_SUCCESS;
 	});
 }
@@ -578,7 +570,7 @@ int rtcSetOpusPacketizationHandler(int tr, uint32_t ssrc, const char *cname, uin
 		emplaceMediaChainableHandler(opusHandler, tr);
 		emplaceRTPConfig(rtpConfig, tr);
 		// set handler
-		track->setRtcpHandler(opusHandler);
+		track->setMediaHandler(opusHandler);
 		return RTC_ERR_SUCCESS;
 	});
 }
@@ -828,7 +820,7 @@ int rtcSetDataChannelCallback(int pc, rtcDataChannelCallbackFunc cb) {
 	return wrap([&] {
 		auto peerConnection = getPeerConnection(pc);
 		if (cb)
-			peerConnection->onDataChannel([pc, cb](std::shared_ptr<DataChannel> dataChannel) {
+			peerConnection->onDataChannel([pc, cb](shared_ptr<DataChannel> dataChannel) {
 				int dc = emplaceDataChannel(dataChannel);
 				if (auto ptr = getUserPointer(pc)) {
 					rtcSetUserPointer(dc, *ptr);
@@ -845,7 +837,7 @@ int rtcSetTrackCallback(int pc, rtcTrackCallbackFunc cb) {
 	return wrap([&] {
 		auto peerConnection = getPeerConnection(pc);
 		if (cb)
-			peerConnection->onTrack([pc, cb](std::shared_ptr<Track> track) {
+			peerConnection->onTrack([pc, cb](shared_ptr<Track> track) {
 				int tr = emplaceTrack(track);
 				if (auto ptr = getUserPointer(pc)) {
 					rtcSetUserPointer(tr, *ptr);

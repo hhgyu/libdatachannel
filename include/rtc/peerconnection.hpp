@@ -43,7 +43,7 @@ struct PeerConnection;
 struct RTC_CPP_EXPORT DataChannelInit {
 	Reliability reliability = {};
 	bool negotiated = false;
-	std::optional<uint16_t> id = nullopt;
+	optional<uint16_t> id = nullopt;
 	string protocol = "";
 };
 
@@ -85,10 +85,10 @@ public:
 	bool hasLocalDescription() const;
 	bool hasRemoteDescription() const;
 	bool hasMedia() const;
-	std::optional<Description> localDescription() const;
-	std::optional<Description> remoteDescription() const;
-	std::optional<string> localAddress() const;
-	std::optional<string> remoteAddress() const;
+	optional<Description> localDescription() const;
+	optional<Description> remoteDescription() const;
+	optional<string> localAddress() const;
+	optional<string> remoteAddress() const;
 	bool getSelectedCandidatePair(Candidate *local, Candidate *remote);
 
 	void setLocalDescription(Description::Type type = Description::Type::Unspec);
@@ -96,12 +96,12 @@ public:
 	void setRemoteDescription(Description description);
 	void addRemoteCandidate(Candidate candidate);
 
-	std::shared_ptr<DataChannel> addDataChannel(string label, DataChannelInit init = {});
-
-	// Equivalent to calling addDataChannel() and setLocalDescription()
-	std::shared_ptr<DataChannel> createDataChannel(string label, DataChannelInit init = {});
-
+	shared_ptr<DataChannel> createDataChannel(string label, DataChannelInit init = {});
 	void onDataChannel(std::function<void(std::shared_ptr<DataChannel> dataChannel)> callback);
+
+	shared_ptr<Track> addTrack(Description::Media description);
+	void onTrack(std::function<void(std::shared_ptr<Track> track)> callback);
+
 	void onLocalDescription(std::function<void(Description description)> callback);
 	void onLocalCandidate(std::function<void(Candidate candidate)> callback);
 	void onStateChange(std::function<void(State state)> callback);
@@ -112,11 +112,7 @@ public:
 	void clearStats();
 	size_t bytesSent();
 	size_t bytesReceived();
-	std::optional<std::chrono::milliseconds> rtt();
-
-	// Track media support requires compiling with libSRTP
-	std::shared_ptr<Track> addTrack(Description::Media description);
-	void onTrack(std::function<void(std::shared_ptr<Track> track)> callback);
+	optional<std::chrono::milliseconds> rtt();
 };
 
 } // namespace rtc

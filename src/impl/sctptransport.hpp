@@ -42,7 +42,7 @@ public:
 
 	using amount_callback = std::function<void(uint16_t streamId, size_t amount)>;
 
-	SctpTransport(std::shared_ptr<Transport> lower, uint16_t port, std::optional<size_t> mtu,
+	SctpTransport(shared_ptr<Transport> lower, uint16_t port, optional<size_t> mtu,
 	              message_callback recvCallback, amount_callback bufferedAmountCallback,
 	              state_callback stateChangeCallback);
 	~SctpTransport();
@@ -50,14 +50,14 @@ public:
 	void start() override;
 	bool stop() override;
 	bool send(message_ptr message) override; // false if buffered
+	bool flush();
 	void closeStream(unsigned int stream);
-	void flush();
 
 	// Stats
 	void clearStats();
 	size_t bytesSent();
 	size_t bytesReceived();
-	std::optional<std::chrono::milliseconds> rtt();
+	optional<std::chrono::milliseconds> rtt();
 
 private:
 	// Order seems wrong but these are the actual values
@@ -79,11 +79,12 @@ private:
 	bool outgoing(message_ptr message) override;
 
 	void doRecv();
+	void doFlush();
 	bool trySendQueue();
 	bool trySendMessage(message_ptr message);
 	void updateBufferedAmount(uint16_t streamId, long delta);
+	void triggerBufferedAmount(uint16_t streamId, size_t amount);
 	void sendReset(uint16_t streamId);
-	bool safeFlush();
 
 	void handleUpcall();
 	int handleWrite(byte *data, size_t len, uint8_t tos, uint8_t set_df);
@@ -95,8 +96,10 @@ private:
 	struct socket *mSock;
 
 	Processor mProcessor;
-	std::atomic<int> mPendingRecvCount;
-	std::mutex mRecvMutex, mSendMutex;
+	std::atomic<int> mPendingRecvCount = 0;
+	std::atomic<int> mPendingFlushCount = 0;
+	std::mutex mRecvMutex;
+	std::recursive_mutex mSendMutex; // buffered amount callback is synchronous
 	Queue<message_ptr> mSendQueue;
 	std::map<uint16_t, size_t> mBufferedAmount;
 	amount_callback mBufferedAmountCallback;
