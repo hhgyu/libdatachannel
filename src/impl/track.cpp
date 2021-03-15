@@ -182,10 +182,14 @@ bool Track::transportSend([[maybe_unused]] message_ptr message) {
 void Track::setMediaHandler(shared_ptr<MediaHandler> handler) {
 	{
 		std::unique_lock lock(mMutex);
+		if (mMediaHandler)
+			mMediaHandler->onOutgoing(nullptr);
+
 		mMediaHandler = handler;
 	}
 
-	handler->onOutgoing(std::bind(&Track::transportSend, this, std::placeholders::_1));
+	if (handler)
+		handler->onOutgoing(std::bind(&Track::transportSend, this, std::placeholders::_1));
 }
 
 shared_ptr<MediaHandler> Track::getMediaHandler() {
